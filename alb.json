@@ -1,0 +1,58 @@
+{
+  "Parameters": {
+    "VpcId": { "Type": "AWS::EC2::VPC::Id" },
+    "Subnets": { "Type": "List<AWS::EC2::Subnet::Id>" },
+    "AppPort": {  "Type": "String", "Default": 8000 }
+  },
+  "Resources": {
+    "LoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Type": "application",
+        "Scheme": "internet-facing",
+        "Subnets": { "Ref": "Subnets" },
+        "SecurityGroups": [ {"Ref": "LoadBalancerSecurityGroup" } ]
+      }
+    },
+    "LoadBalancerSecurityGroup": {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription": { "Fn::Sub": "Control web traffic to load balancer" },
+        "SecurityGroupIngress" : [
+          { "CidrIp": "0.0.0.0/0", "FromPort": "80", "ToPort": "80", "IpProtocol": "tcp" },
+          { "CidrIp": "0.0.0.0/0", "FromPort": "443", "ToPort": "443", "IpProtocol": "tcp"  }
+        ],
+        "SecurityGroupEgress" : [
+          { "CidrIp": "127.0.0.1/32", "FromPort": "1", "ToPort": "1", "IpProtocol": "tcp"  }
+        ],
+        "VpcId" : {"Ref": "VpcId" }
+      }
+    },
+    "LoadBalancerEgress": {
+      "Type": "AWS::EC2::SecurityGroupEgress",
+      "Properties": {
+        "DestinationSecurityGroupId": { "Ref": "BackendSecurityGroup" },
+        "FromPort": { "Ref": "AppPort" },
+        "ToPort": { "Ref": "AppPort" },
+        "GroupId": { "Ref": "LoadBalancerSecurityGroup" },
+        "IpProtocol": "tcp"
+      }
+    },
+    "BackendSecurityGroup": {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription": { "Fn::Sub": "Control web traffic to load balancer backends" },
+        "SecurityGroupIngress" : [
+          { "SourceSecurityGroupId": { "Ref": "LoadBalancerSecurityGroup" }, "FromPort": {"Ref":"AppPort" }, "ToPort": {"Ref": "AppPort" }, "IpProtocol": "tcp"  }
+        ],
+        "VpcId" : {"Ref": "VpcId" }
+      }
+    }
+  },
+  "Outputs": { 
+    "LoadBalancer": { "Value": { "Ref": "LoadBalancer" }, "Export": { "Name": { "Fn::Sub": "${AWS::StackName}:LoadBalancer"  } } },
+    "LoadBalancerHostedZone": { "Value": { "Fn::GetAtt": [ "LoadBalancer", "CanonicalHostedZoneId" ] } },
+    "LoadBalancerHostedZone": { "Value": { "Fn::GetAtt": [ "LoadBalancer", "DNSName" ] } },
+    "LoadBalancerSecurityGroup": { "Value": { "Ref": "LoadBalancerSecurityGroup" } }
+  }
+}

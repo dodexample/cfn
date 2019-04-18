@@ -1,17 +1,24 @@
 REGION="us-west-2" 
-TEST_STACK_NAME="asg-test"
 
 do: check-templates cook-parameters apply-templates
 
 check-templates:
-	aws cloudformation --region $(REGION) validate-template --template-body file://asg.json
+	for tpl in $${tpl:-asg alb} ; do \
+	aws cloudformation --region $(REGION) validate-template --template-body file://$${tpl}.json ; \
+	done
 
 cook-parameters:
-	cp test-parameters.json cooked-test-parameters.json && sed -i "" -e "s/SUBNETS/$$(aws ec2 describe-subnets --filters Name=vpc-id,Values=$$(aws ec2 describe-vpcs --region us-west-2 --filters Name=tag:Name,Values=legacy-prod --query Vpcs[0].[VpcId] --output text) --region us-west-2 --query Subnets[*].SubnetId --output text | sed -e 's/[[:space:]]\{1,\}subnet/,subnet/g' -e 's/[[:space:]]\{1,\}$$//g')/" cooked-test-parameters.json
+	cp asg-parameters.json cooked-asg-parameters.json && \
+	cp alb-parameters.json cooked-alb-parameters.json && \
+	vpcid="$$(aws ec2 describe-vpcs --region $(REGION)  --filters Name=tag:Name,Values=legacy-prod --query Vpcs[0].[VpcId] --output text | sed -e 's/[[:space:]]\{1,\}$$//g' )"; \
+	subnetids="$$(aws ec2 describe-subnets --region $(REGION) --filters Name=vpc-id,Values=$${vpcid} --query Subnets[*].SubnetId --output text| sed -e 's/[[:space:]]\{1,\}subnet/,subnet/g' | sed -e 's/[[:space:]]\{1,\}$$//g' )"; \
+	sed -i "" -e "s/SUBNETS/$${subnetids}/g" -e "s/VPCID/$${vpcid}/g"  -e 's/[[:space:]]\{1,\}$$//g' cooked-asg-parameters.json cooked-alb-parameters.json
 
 apply-templates:
-	if aws cloudformation --region $(REGION) describe-stacks --stack-name $(TEST_STACK_NAME) 2>&1 | grep -iF 'does not exist' ; then \
-		aws cloudformation --region $(REGION) create-stack --template-body file://asg.json --stack-name $(TEST_STACK_NAME) --parameters file://cooked-test-parameters.json --capabilities CAPABILITY_IAM ;  \
-	else \
-		aws cloudformation update-stack ; \
-	fi
+	for tpl in $${tpl:-asg alb} ; do \
+		if aws cloudformation --region $(REGION) describe-stacks --stack-name test-$${tpl}  2>&1 | grep -iF 'does not exist' ; then \
+			aws cloudformation --region $(REGION) create-stack --template-body file://$${tpl}.json --stack-name test-$${tpl} --parameters file://cooked-$${tpl}-parameters.json --capabilities CAPABILITY_IAM ;  \
+		else \
+			aws cloudformation update-stack ; \
+		fi;\
+	done
