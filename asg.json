@@ -1,0 +1,184 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "DoD web application deploy",
+    "Parameters": {
+        "RepositoryName": {
+            "Description": "The name of the ECR image to pull out of this account/region's ECR",
+            "Type": "String"
+        },
+        "DockerImage": {
+          "Type": "String",
+          "Description": "Docker image to pull"
+        },
+        "Environment": { "Type": "String", "Description": "The environment to which this belongs" },
+        "AppSubnets": { "Type": "List<AWS::EC2::Subnet::Id>", "Description": "subnet(s) to use", "Default": "" },
+        "TargetGroupArns": { "Type": "CommaDelimitedList" , "Default": "" },
+        "ImageId": { 
+            "Type": "String", 
+            "Default": "ami-01e24be29428c15b2",
+            "Description": "Amazon ami with docker, for now.  We should build this ourselves with a repeatable process because upsteam amis tend to disappear with time"
+        },
+        "DockerExtra": { 
+          "Type": "String", 
+          "Default": ""
+        },
+        "LogGroupName":  { "Type": "String", "Default": "" },
+        "LogGroupArn":  { "Type": "String", "Default": "" },
+        "SshKeyName":  {
+          "Type": "String",
+          "Default": ""
+        },
+        "ApplicationName": { "Type": "String" },
+        "DockerPort": { "Type": "String", "Default": "8000" },
+        "SecurityGroups": { "Type": "String", "Default": "" },
+        "InstanceType": { "Type": "String", "Default": "t3.nano" }
+  },
+  "Conditions": {
+    "OmitLogging": { "Fn::Or": [ { "Fn::Equals": [ {"Ref": "LogGroupArn" }, "" ] }, { "Fn::Equals": [ {"Ref": "LogGroupName" }, "" ] } ] },
+    "OmitSshKey": { "Fn::Equals": [ {"Ref": "SshKeyName" }, "" ] },
+    "OmitSecurityGroups": { "Fn::Equals": [ {"Ref": "SecurityGroups" }, "" ] },
+    "OmitTargetGroupArns": { "Fn::Equals": [ { "Ref": "SecurityGroups" }, "" ] },
+    "OmitDockerExtra": { "Fn::Equals": [ { "Ref": "DockerExtra" }, "" ] }
+  },
+  "Resources": {
+        "ApplicationASG": {
+            "Properties": {
+                "Cooldown": "90",
+                "DesiredCapacity": "1",
+                "HealthCheckGracePeriod": "180",
+                "HealthCheckType": "ELB",
+                "LaunchConfigurationName": { "Ref": "LaunchConfig" },
+                "MaxSize": "2",
+                "MinSize": "1",
+                "Tags": [
+                    { "Key": "environment", "PropagateAtLaunch": true, "Value": { "Ref": "Environment" } }
+                ],
+                "VPCZoneIdentifier": { "Ref": "AppSubnets" },
+                "TargetGroupArns": { "Fn::If": [ "OmitTargetGroupArns", { "Ref": "AWS::NoValue" }, {"Ref": "TargetGroupArns" } ] }
+            },
+            "Type": "AWS::AutoScaling::AutoScalingGroup"
+        },
+        "LaunchConfig": {
+            "Properties": {
+                "IamInstanceProfile": { "Ref": "ApplicationProfile" },
+                "ImageId": { "Ref": "ImageId" },
+                "InstanceType":  { "Ref": "InstanceType" },
+                "KeyName": { "Fn::If": [ "OmitSshKey", {"Ref": "AWS::NoValue" }, { "Ref": "SshKeyName" } ] },
+                "SecurityGroups":  { "Fn::If": [ "OmitSecurityGroups", { "Ref": "AWS::NoValue" }, {"Ref": "SecurityGroups" } ] },
+                "UserData": { "Fn::Base64": { "Fn::Join": [ "\n", [
+                  "#!/bin/bash -ex",
+                  "function finish { ",
+                  "  exit_code=${1:-99};",
+                  "  shift",
+                  { "Fn::Sub": "  /opt/aws/bin/cfn-signal -e $exit_code --stack ${AWS::StackName} --region ${AWS::Region} --resource 'ApplicationASG' $@; " },
+                  "  [[ $exit_code == 0 ]] && trap - EXIT ; ",
+                  "  exit $exit_code;",
+                  "}",
+                  "trap finish EXIT",
+                  "yum update -y",
+                  "yum install -y docker",
+                  "sudo service docker start",
+                  "until docker ps; do sleep 1; done", 
+                  "until aws sts get-caller-identity; do sleep 1; done",
+                  "# get instance id for logging",
+                  "export INSTANCE_ID=\"`curl 169.254.169.254/latest/meta-data/instance-id`\"",
+                  "#determine whether we need no-include-email",
+                  "set +e; docker login -e </dev/null >/dev/null; if [ $? == 125 ]; then incemail=--no-include-email;fi; set -e",
+                  { "Fn::Sub": "eval `aws --region ${AWS::Region} ecr get-login $incemail`" },
+                  "# run application in daemonic mode",
+                  "# TODO: expose environment file",
+                  "docker run -d \\",
+                  { "Fn::If": [ 
+                      "OmitLogging",
+                      { "Ref": "AWS::NoValue" },
+                      { "Fn::Join": [ " ", [ 
+                        "--log-driver=awslogs \\",
+                        { "Fn::Sub": "    --log-opt tag=\"${Environment}-${ApplicationName}/$INSTANCE_ID/{{.ID}}\"" },
+                        { "Fn::Sub": "    --log-opt awslogs-region=${AWS::Region}" },
+                        { "Fn::Sub": "    --log-opt awslogs-group=${LogGroupName}" }
+                      ] ] }
+                  ] },
+                  "  --restart=always \\",
+                  {"Fn::Sub": "  -e AWS_REGION=${AWS::Region} \\"},
+                  {"Fn::Sub": "  -e AWS_STACK_NAME=${AWS::StackName} \\"},
+                  {"Fn::Sub": "  -e AWS_STACK_ID=${AWS::StackId} \\"},
+                  {"Fn::Sub": "  -p ${DockerPort}:${DockerPort} \\"},
+                  { "Fn::If": [ "OmitDockerExtra", { "Ref": "AWS::NoValue" }, {"Fn::Sub": "${DockerExtra} \\"} ] },
+                  { "Ref": "DockerImage" },
+                  "finish 0"
+                ] ] } }
+            },
+            "Type": "AWS::AutoScaling::LaunchConfiguration"
+        },
+        "ApplicationProfile": {
+            "Properties": {
+                "Path": {"Fn::Sub": "/app/${Environment}/${ApplicationName}/" },
+                "Roles": [ { "Ref": "ApplicationRole" } ]
+            },
+            "Type": "AWS::IAM::InstanceProfile"
+        },
+        "ApplicationRole": {
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [ "sts:AssumeRole" ],
+                            "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" } },
+                            "Effect": "Allow",
+                            "Principal": { "AWS": { "Ref": "AWS::AccountId" } }
+                        },
+                        {
+                            "Action": "sts:AssumeRole", 
+                            "Effect": "Allow",
+                            "Principal": { "Service": "ec2.amazonaws.com" }
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                },
+                "Path": {"Fn::Sub": "/app/${Environment}/${ApplicationName}/" },
+                "Policies": [
+                    {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "ecr:GetAuthorizationToken",
+                                        "sts:GetCallerIdentity"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Action": [
+                                        "ecr:BatchCheckLayerAvailability",
+                                        "ecr:BatchGetImage",
+                                        "ecr:GetDownloadUrlForLayer"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [ 
+                                      { "Fn::Sub": "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${RepositoryName}" },
+                                      { "Fn::Sub": "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${RepositoryName}:*" } 
+                                    ]
+                                },
+                                { "Fn::If": [ "OmitLogging", { "Ref": "AWS::NoValue" }, 
+                                  {
+                                    "Action": [
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents",
+                                        "logs:DescribeLogStreams"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": [ { "Ref": "LogGroupArn" } ]
+                                  }
+                               ] }
+                            ],
+                            "Version": "2012-10-17"
+                        },
+                        "PolicyName": "app-platform-policy"
+                    }
+                ]
+            },
+            "Type": "AWS::IAM::Role"
+        }
+    }
+}

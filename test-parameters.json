@@ -1,0 +1,7 @@
+[ 
+   { "ParameterKey": "DockerImage", "ParameterValue": "nginx" },
+   { "ParameterKey": "Environment", "ParameterValue": "dev" },
+   { "ParameterKey": "RepositoryName", "ParameterValue": "none" },
+   { "ParameterKey": "ApplicationName","ParameterValue": "NginxStubApp" },
+   { "ParameterKey": "AppSubnets", "ParameterValue": "SUBNETS" }
+]
