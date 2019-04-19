@@ -65,6 +65,16 @@
         "Type": "A",
         "Weight" : { "Ref": "DnsWeight" }
       }
+    },
+    "SSLCertificate": {
+      "Type" : "AWS::CertificateManager::Certificate",
+      "Properties" : {
+        "DomainName" : { "Fn::Join": [ ".", [ { "Ref": "HostName" }, { "Fn::ImportValue": { "Fn::Sub": "${EnvStack}:DomainName" } } ] ] },
+        "SubjectAlternativeNames" : [ 
+          { "Fn::Join": [ ".", [ "*", { "Ref": "HostName" }, { "Fn::ImportValue": { "Fn::Sub": "${EnvStack}:DomainName" } } ] ] } 
+        ],
+        "ValidationMethod" : "EMAIL"
+      }
     }
   },
   "Outputs": { 
