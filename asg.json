@@ -24,20 +24,19 @@
         },
         "LogGroupName":  { "Type": "String", "Default": "" },
         "LogGroupArn":  { "Type": "String", "Default": "" },
-        "SshKeyName":  {
-          "Type": "String",
-          "Default": ""
-        },
+        "SshKeyName":  { "Type": "String", "Default": "" },
         "ApplicationName": { "Type": "String" },
         "DockerPort": { "Type": "String", "Default": "8000" },
-        "SecurityGroups": { "Type": "String", "Default": "" },
-        "InstanceType": { "Type": "String", "Default": "t3.nano" }
+        "AdditionalSecurityGroups": { "Type": "String", "Default": "" },
+        "InstanceType": { "Type": "String", "Default": "t3.nano" },
+        "ALBStack": { "Type": "String" },
+        "VpcId": { "Type": "AWS::EC2::VPC::Id" }
   },
   "Conditions": {
     "OmitLogging": { "Fn::Or": [ { "Fn::Equals": [ {"Ref": "LogGroupArn" }, "" ] }, { "Fn::Equals": [ {"Ref": "LogGroupName" }, "" ] } ] },
     "OmitSshKey": { "Fn::Equals": [ {"Ref": "SshKeyName" }, "" ] },
-    "OmitSecurityGroups": { "Fn::Equals": [ {"Ref": "SecurityGroups" }, "" ] },
-    "OmitTargetGroupArns": { "Fn::Equals": [ { "Ref": "SecurityGroups" }, "" ] },
+    "OmitAdditionalSecurityGroups": { "Fn::Equals": [ {"Ref": "AdditionalSecurityGroups" }, "" ] },
+    "OmitTargetGroupArns": { "Fn::Equals": [ { "Ref": "AdditionalSecurityGroups" }, "" ] },
     "OmitDockerExtra": { "Fn::Equals": [ { "Ref": "DockerExtra" }, "" ] }
   },
   "Resources": {
@@ -64,7 +63,10 @@
                 "ImageId": { "Ref": "ImageId" },
                 "InstanceType":  { "Ref": "InstanceType" },
                 "KeyName": { "Fn::If": [ "OmitSshKey", {"Ref": "AWS::NoValue" }, { "Ref": "SshKeyName" } ] },
-                "SecurityGroups":  { "Fn::If": [ "OmitSecurityGroups", { "Ref": "AWS::NoValue" }, {"Ref": "SecurityGroups" } ] },
+                "SecurityGroups":  [ 
+                  { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:BackendSecurityGroup" } },
+                  { "Fn::If": [ "OmitAdditionalSecurityGroups", { "Ref": "AWS::NoValue" }, {"Ref": "AdditionalSecurityGroups" } ] }
+                ],
                 "UserData": { "Fn::Base64": { "Fn::Join": [ "\n", [
                   "#!/bin/bash -ex",
                   "function finish { ",
@@ -102,7 +104,7 @@
                   {"Fn::Sub": "  -e AWS_REGION=${AWS::Region} \\"},
                   {"Fn::Sub": "  -e AWS_STACK_NAME=${AWS::StackName} \\"},
                   {"Fn::Sub": "  -e AWS_STACK_ID=${AWS::StackId} \\"},
-                  {"Fn::Sub": "  -p ${DockerPort}:${DockerPort} \\"},
+                  {"Fn::Sub": [ "  -p ${AppPort}:${DockerPort} \\", {"AppPort": { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:AppPort" } } } ] },
                   { "Fn::If": [ "OmitDockerExtra", { "Ref": "AWS::NoValue" }, {"Fn::Sub": "${DockerExtra} \\"} ] },
                   { "Ref": "DockerImage" },
                   "finish 0"
@@ -179,6 +181,22 @@
                 ]
             },
             "Type": "AWS::IAM::Role"
+        },
+        "TargetGroup": { "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+          "Properties" : {
+            "HealthCheckIntervalSeconds" : 10,
+            "HealthCheckPath" : "/",
+            "HealthCheckPort" : {"Fn::ImportValue": {"Fn::Sub": "${ALBStack}:AppPort" } },
+            "HealthCheckProtocol" : "HTTP",
+            "HealthCheckTimeoutSeconds" : 5,
+            "HealthyThresholdCount" : 2,
+            "Matcher" : { "HttpCode": "200-399" },
+            "Port" : {"Fn::ImportValue": {"Fn::Sub": "${ALBStack}:AppPort" } },
+            "Protocol" : "HTTP",
+            "TargetType" : "instance",
+            "UnhealthyThresholdCount" : 3,
+            "VpcId" : {"Ref":"VpcId" }
         }
+      }
     }
 }

@@ -3,5 +3,7 @@
    { "ParameterKey": "Environment", "ParameterValue": "dev" },
    { "ParameterKey": "RepositoryName", "ParameterValue": "none" },
    { "ParameterKey": "ApplicationName","ParameterValue": "NginxStubApp" },
-   { "ParameterKey": "AppSubnets", "ParameterValue": "SUBNETS" }
+   { "ParameterKey": "VpcId", "ParameterValue": "VPCID" },
+   { "ParameterKey": "AppSubnets", "ParameterValue": "SUBNETS" },
+   { "ParameterKey": "ALBStack", "ParameterValue": "test-alb" }
 ]

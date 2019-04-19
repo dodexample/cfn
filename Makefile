@@ -19,6 +19,6 @@ apply-templates:
 		if aws cloudformation --region $(REGION) describe-stacks --stack-name test-$${tpl}  2>&1 | grep -iF 'does not exist' ; then \
 			aws cloudformation --region $(REGION) create-stack --template-body file://$${tpl}.json --stack-name test-$${tpl} --parameters file://cooked-$${tpl}-parameters.json --capabilities CAPABILITY_IAM ;  \
 		else \
-			aws cloudformation update-stack ; \
+			aws cloudformation update-stack --region $(REGION) --stack-name test-$${tpl} --parameters file://cooked-$${tpl}-parameters.json --capabilities CAPABILITY_IAM  --template-body file://$${tpl}.json; \
 		fi;\
 	done

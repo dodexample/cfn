@@ -51,8 +51,9 @@
   },
   "Outputs": { 
     "LoadBalancer": { "Value": { "Ref": "LoadBalancer" }, "Export": { "Name": { "Fn::Sub": "${AWS::StackName}:LoadBalancer"  } } },
-    "LoadBalancerHostedZone": { "Value": { "Fn::GetAtt": [ "LoadBalancer", "CanonicalHostedZoneId" ] } },
-    "LoadBalancerHostedZone": { "Value": { "Fn::GetAtt": [ "LoadBalancer", "DNSName" ] } },
-    "LoadBalancerSecurityGroup": { "Value": { "Ref": "LoadBalancerSecurityGroup" } }
+    "LoadBalancerHostedZone": { "Value": { "Fn::GetAtt": [ "LoadBalancer", "CanonicalHostedZoneID" ] } },
+    "LoadBalancerDnsName": { "Value": { "Fn::GetAtt": [ "LoadBalancer", "DNSName" ] } },
+    "BackendSecurityGroup": { "Value": { "Ref": "BackendSecurityGroup" }, "Export": { "Name": { "Fn::Sub": "${AWS::StackName}:BackendSecurityGroup" } } },
+    "AppPort": { "Value": { "Ref": "AppPort" }, "Export": { "Name": { "Fn::Sub": "${AWS::StackName}:AppPort" } } }
   }
 }
