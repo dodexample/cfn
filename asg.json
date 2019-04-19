@@ -10,9 +10,15 @@
           "Type": "String",
           "Description": "Docker image to pull"
         },
+        "LiveVersion": { "Type": "String", "AllowedValues": [ "True", "False" ], "Default": "False" },
+        "AppVersionWeight": {"Type": "Number", "Default": 1 },
+        "AppVersionString": {
+          "Type": "String", 
+          "AllowedPattern": "^[-_a-z0-9A-Z]*$", 
+          "Description": "The opaque string to expose as the version.  Must not contain dots as its used for the DNS name for this version"
+        },
         "Environment": { "Type": "String", "Description": "The environment to which this belongs" },
         "AppSubnets": { "Type": "List<AWS::EC2::Subnet::Id>", "Description": "subnet(s) to use", "Default": "" },
-        "ExternalTargetGroupArn": { "Type": "String" , "Default": "" },
         "ImageId": { 
             "Type": "String", 
             "Default": "ami-01e24be29428c15b2",
@@ -36,8 +42,8 @@
     "OmitLogging": { "Fn::Or": [ { "Fn::Equals": [ {"Ref": "LogGroupArn" }, "" ] }, { "Fn::Equals": [ {"Ref": "LogGroupName" }, "" ] } ] },
     "OmitSshKey": { "Fn::Equals": [ {"Ref": "SshKeyName" }, "" ] },
     "OmitAdditionalSecurityGroups": { "Fn::Equals": [ {"Ref": "AdditionalSecurityGroups" }, "" ] },
-    "OmitExternalTargetGroupArn": { "Fn::Equals": [ { "Ref": "ExternalTargetGroupArn" }, "" ] },
-    "OmitDockerExtra": { "Fn::Equals": [ { "Ref": "DockerExtra" }, "" ] }
+    "OmitDockerExtra": { "Fn::Equals": [ { "Ref": "DockerExtra" }, "" ] },
+    "IncludeLiveTargetGroup": { "Fn::Equals": [ { "Ref": "LiveVersion" }, "True" ] }
   },
   "Resources": {
         "ApplicationASG": {
@@ -54,7 +60,10 @@
                 ],
                 "VPCZoneIdentifier": { "Ref": "AppSubnets" },
                 "TargetGroupARNs": [ 
-                  { "Fn::If": [ "OmitExternalTargetGroupArn", { "Ref": "AWS::NoValue" }, {"Ref": "ExternalTargetGroupArn" } ] },
+                  { "Fn::If": [ "IncludeLiveTargetGroup", 
+                    { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:MasterTargetGroup" } },
+                    { "Ref": "AWS::NoValue" } 
+                  ] },
                   { "Ref": "TargetGroup" } 
                 ] 
             },
@@ -201,26 +210,50 @@
             "VpcId" : {"Ref":"VpcId" }
         }
       },
-
-      "PerVersionListener": {
-        "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+      "PerVersionDnsDomain": {
+        "Type" : "AWS::Route53::RecordSet",
         "Properties" : {
-          "DefaultActions" : [ 
+          "AliasTarget" : {
+            "DNSName": { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:LoadBalancerDnsName" } },
+            "EvaluateTargetHealth" : false,
+            "HostedZoneId" : { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:LoadBalancerHostedZone" } }
+          },
+          "HostedZoneId" : { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:DnsHostedZone" } },
+          "Name" : { "Fn::Join": [ ".",  [
+              {"Ref": "AppVersionString" },
+              { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:DnsName" } }
+          ] ] },
+          "SetIdentifier" : { "Ref": "AWS::StackId" },
+          "Type": "A",
+          "Weight" : { "Ref": "AppVersionWeight" }
+        }
+      },
+      "PerVersionListenerRule": {
+        "Type" : "AWS::ElasticLoadBalancingV2::ListenerRule",
+        "Properties" : {
+          "ListenerArn": { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:MasterListener" } },
+          "Actions": [ 
             { 
-              "Order": 1000,
+              "Order": 100,
               "TargetGroupArn": { "Ref": "TargetGroup" },
               "Type": "forward"
             }
           ],
-          "LoadBalancerArn" : {"Fn::ImportValue": {"Fn::Sub": "${ALBStack}:LoadBalancer" } },
-          "Port": "80",
-          "Protocol" : "HTTP"
+          "Conditions" : [ 
+            { 
+              "Field": "host-header",
+              "Values": [ 
+                { "Fn::Join": [ ".",  [ {"Ref": "AppVersionString" }, { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:DnsName" } } ] ] }
+              ]
+            }
+          ],
+          "Priority" : 15
         }
       },
-      "VersionListenerRule": {
+      "DockerImageListenerRule": {
         "Type" : "AWS::ElasticLoadBalancingV2::ListenerRule",
         "Properties" : {
-          "ListenerArn": { "Ref": "PerVersionListener" },
+          "ListenerArn": { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:MasterListener" } },
           "Actions": [ 
             { 
               "Order": 100,
@@ -234,11 +267,47 @@
           ],
           "Conditions" : [ 
             { 
+              "Field": "host-header",
+              "Values": [ 
+                { "Fn::Join": [ ".",  [ {"Ref": "AppVersionString" }, { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:DnsName" } } ] ] }
+              ]
+            },
+            { 
               "Field": "path-pattern", 
               "Values": [ "/docker/image" ]
             }
           ],
-          "Priority" : 10
+          "Priority" : 12
+        }
+      },
+      "AppVersionListenerRule": {
+        "Type" : "AWS::ElasticLoadBalancingV2::ListenerRule",
+        "Properties" : {
+          "ListenerArn": { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:MasterListener" } },
+          "Actions": [ 
+            { 
+              "Order": 100,
+              "Type": "fixed-response",
+              "FixedResponseConfig": {
+                "ContentType": "text/plain",
+                "StatusCode": "200",
+                "MessageBody": { "Ref": "AppVersionString" }
+              }
+            }
+          ],
+          "Conditions" : [ 
+            { 
+              "Field": "host-header",
+              "Values":  [ 
+                { "Fn::Join": [ ".",  [ {"Ref": "AppVersionString" }, { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:DnsName" } } ] ] }
+              ]
+            },
+            { 
+              "Field": "path-pattern", 
+              "Values": [ "/app/version" ]
+            }
+          ],
+          "Priority" : 11
         }
       }
   }

@@ -15,6 +15,8 @@ TODOs
 
 - ssh access process
 
+- priority is shared for the listener but the rules all need their own priority , how do we "assign" them?  Probably lambda + storage (dynamo or sdb)
+
 ## app infra
 
 - splunk
