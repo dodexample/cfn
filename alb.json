@@ -2,7 +2,10 @@
   "Parameters": {
     "VpcId": { "Type": "AWS::EC2::VPC::Id" },
     "Subnets": { "Type": "List<AWS::EC2::Subnet::Id>" },
-    "AppPort": {  "Type": "String", "Default": 8000 }
+    "AppPort": {  "Type": "String", "Default": 8000 },
+    "HostName": { "Type": "String", "Default": "app" },
+    "DnsWeight": { "Type": "Number", "Default": "1" },
+    "EnvStack": {  "Type": "String" }
   },
   "Resources": {
     "LoadBalancer": {
@@ -46,6 +49,21 @@
           { "SourceSecurityGroupId": { "Ref": "LoadBalancerSecurityGroup" }, "FromPort": {"Ref":"AppPort" }, "ToPort": {"Ref": "AppPort" }, "IpProtocol": "tcp"  }
         ],
         "VpcId" : {"Ref": "VpcId" }
+      }
+    },
+    "DnsRecord": {
+      "Type" : "AWS::Route53::RecordSet",
+      "Properties" : {
+        "AliasTarget" : {
+          "DNSName" : { "Fn::GetAtt": [ "LoadBalancer", "DNSName" ] },
+          "EvaluateTargetHealth" : false,
+          "HostedZoneId" : { "Fn::GetAtt": [ "LoadBalancer", "CanonicalHostedZoneID" ] }
+        },
+        "HostedZoneId" : { "Fn::ImportValue": { "Fn::Sub": "${EnvStack}:HostedZoneID" } },
+        "Name" : { "Fn::Join": [ ".", [ { "Ref": "HostName" }, { "Fn::ImportValue": { "Fn::Sub": "${EnvStack}:DomainName" } } ] ] },
+        "SetIdentifier" : { "Ref": "AWS::StackId" },
+        "Type": "A",
+        "Weight" : { "Ref": "DnsWeight" }
       }
     }
   },

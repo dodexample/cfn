@@ -1,4 +1,5 @@
 [
   {"ParameterKey": "Subnets", "ParameterValue": "SUBNETS" },
-  {"ParameterKey": "VpcId", "ParameterValue": "VPCID" }
+  {"ParameterKey": "VpcId", "ParameterValue": "VPCID" },
+  {"ParameterKey": "EnvStack", "ParameterValue": "test-env" }
 ]

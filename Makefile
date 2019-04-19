@@ -8,6 +8,7 @@ check-templates:
 	done
 
 cook-parameters:
+	cp env-parameters.json cooked-env-parameters.json && \
 	cp asg-parameters.json cooked-asg-parameters.json && \
 	cp alb-parameters.json cooked-alb-parameters.json && \
 	vpcid="$$(aws ec2 describe-vpcs --region $(REGION)  --filters Name=tag:Name,Values=legacy-prod --query Vpcs[0].[VpcId] --output text | sed -e 's/[[:space:]]\{1,\}$$//g' )"; \

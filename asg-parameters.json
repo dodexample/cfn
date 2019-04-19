@@ -5,5 +5,7 @@
    { "ParameterKey": "ApplicationName","ParameterValue": "NginxStubApp" },
    { "ParameterKey": "VpcId", "ParameterValue": "VPCID" },
    { "ParameterKey": "AppSubnets", "ParameterValue": "SUBNETS" },
-   { "ParameterKey": "ALBStack", "ParameterValue": "test-alb" }
+   { "ParameterKey": "ALBStack", "ParameterValue": "test-alb" },
+   { "ParameterKey": "DockerPort", "ParameterValue": "80" },
+   { "ParameterKey": "SshKeyName", "ParameterValue": "danfarrell@dod" }
 ]
