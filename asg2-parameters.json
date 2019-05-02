@@ -1,7 +1,7 @@
 [ 
    { "ParameterKey": "DockerImage", "ParameterValue": "nginx" },
-   { "ParameterKey": "Priority", "ParameterValue": "20" },
-   { "ParameterKey": "AppVersionString", "ParameterValue": "latest" },
+   { "ParameterKey": "Priority", "ParameterValue": "30" },
+   { "ParameterKey": "AppVersionString", "ParameterValue": "another" },
    { "ParameterKey": "Environment", "ParameterValue": "dev" },
    { "ParameterKey": "LiveVersion", "ParameterValue": "True" },
    { "ParameterKey": "RepositoryName", "ParameterValue": "none" },

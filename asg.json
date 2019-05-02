@@ -2,6 +2,7 @@
   "AWSTemplateFormatVersion": "2010-09-09",
     "Description": "DoD web application deploy",
     "Parameters": {
+        "Priority": { "Type": "Number", "Description": "Unique number for per-version endpoint" },
         "RepositoryName": {
             "Description": "The name of the ECR image to pull out of this account/region's ECR",
             "Type": "String"
@@ -247,67 +248,7 @@
               ]
             }
           ],
-          "Priority" : 15
-        }
-      },
-      "DockerImageListenerRule": {
-        "Type" : "AWS::ElasticLoadBalancingV2::ListenerRule",
-        "Properties" : {
-          "ListenerArn": { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:MasterListener" } },
-          "Actions": [ 
-            { 
-              "Order": 100,
-              "Type": "fixed-response",
-              "FixedResponseConfig": {
-                "ContentType": "text/plain",
-                "StatusCode": "200",
-                "MessageBody": { "Ref": "DockerImage" }
-              }
-            }
-          ],
-          "Conditions" : [ 
-            { 
-              "Field": "host-header",
-              "Values": [ 
-                { "Fn::Join": [ ".",  [ {"Ref": "AppVersionString" }, { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:DnsName" } } ] ] }
-              ]
-            },
-            { 
-              "Field": "path-pattern", 
-              "Values": [ "/docker/image" ]
-            }
-          ],
-          "Priority" : 12
-        }
-      },
-      "AppVersionListenerRule": {
-        "Type" : "AWS::ElasticLoadBalancingV2::ListenerRule",
-        "Properties" : {
-          "ListenerArn": { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:MasterListener" } },
-          "Actions": [ 
-            { 
-              "Order": 100,
-              "Type": "fixed-response",
-              "FixedResponseConfig": {
-                "ContentType": "text/plain",
-                "StatusCode": "200",
-                "MessageBody": { "Ref": "AppVersionString" }
-              }
-            }
-          ],
-          "Conditions" : [ 
-            { 
-              "Field": "host-header",
-              "Values":  [ 
-                { "Fn::Join": [ ".",  [ {"Ref": "AppVersionString" }, { "Fn::ImportValue": { "Fn::Sub": "${ALBStack}:DnsName" } } ] ] }
-              ]
-            },
-            { 
-              "Field": "path-pattern", 
-              "Values": [ "/app/version" ]
-            }
-          ],
-          "Priority" : 11
+          "Priority" : { "Ref": "Priority" }
         }
       }
   }
